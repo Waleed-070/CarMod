@@ -46,42 +46,54 @@ class _ImageAnalysisScreenState extends State<ImageAnalysisScreen> {
     _analyzeImage();
   }
 
-  Future<void> _analyzeImage() async {
-    setState(() {
-      _isLoading = true;
-      _detections = []; // Clear previous detections
-      _isCar = null; // Reset car detection status
-    });
 
-    try {
-      final bytes = await widget.imageFile.readAsBytes();
-      final response = await http.post(
-        Uri.parse('$kBaseUrl/detect'),
-        body: bytes,
-        headers: {'Content-Type': 'image/jpeg'},
+Future<void> _analyzeImage() async {
+  setState(() {
+    _isLoading = true;
+    _detections = [];
+    _isCar = null;
+  });
+
+  try {
+    final bytes = await widget.imageFile.readAsBytes();
+    final uri = Uri.parse('$kBaseUrl/detect');
+
+    // 🔥 Create a multipart request
+    final request = http.MultipartRequest('POST', uri)
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          'file', // this is the field name your FastAPI expects
+          bytes,
+          filename: 'image.png', // give it any name
+        ),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _detections = List<Map<String, dynamic>>.from(data['detections']);
-          _isCar = data['is_car'] ?? false; // Get the is_car value from the response
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error from API: ${response.statusCode} ${response.body}')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error analyzing image: $e')),
-      );
-    } finally {
+    // 🔥 Send the request
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
       setState(() {
-        _isLoading = false;
+        _detections = List<Map<String, dynamic>>.from(data['detections']);
+        _isCar = data['is_car'] ?? false;
       });
+      print("RESPONSE ${_detections}   , ${_isCar}");
+
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error from API: ${response.statusCode} ${response.body}')),
+      );
     }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error analyzing image: $e')),
+    );
+  } finally {
+    setState(() {
+      _isLoading = false;
+    });
   }
+}
 
   @override
   Widget build(BuildContext context) {
